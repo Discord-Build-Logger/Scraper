@@ -1,6 +1,6 @@
 {
   "name": "@dsale/scraper",
-  "version": "0.0.1-beta.3",
+  "version": "0.0.1-beta.5",
   "homepage": "https://github.com/Discord-Build-Logger/Scraper",
   "author": {
     "name": "Rie Takahashi",
@@ -31,6 +31,7 @@
   "peerDependencies": {
     "typescript": "^5.0.0"
   },
+  "exports": "./src/index.ts",
   "files": [
     "./*",
     "!./node_modules/",

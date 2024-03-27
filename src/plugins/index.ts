@@ -1,6 +1,6 @@
 import type { Build, File, Plugin } from "~/types";
-import Metadata from "../app/metadata";
 import ExperimentsPlugin from "./experiments";
+import Metadata from "./metadata";
 
 const plugins: Plugin[] = [new Metadata(), new ExperimentsPlugin()];
 

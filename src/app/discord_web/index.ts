@@ -10,7 +10,14 @@ import type { Build, File } from "~/types";
 import Discord from "../../types/discord";
 
 export class DiscordWebScraper {
-	async scrapeLatestBuild(branch: Discord.ReleaseChannel) {
+	constructor(
+		public build: Build,
+		public html: string,
+	) {}
+
+	static async scrapeLatestBuild(
+		branch: Discord.ReleaseChannel,
+	): Promise<DiscordWebScraper> {
 		console.time(`Time taken to fetch latest build root for ${branch}`);
 		const url = new URL("/app", `https://${Discord.Domains[branch]}`);
 
@@ -53,25 +60,38 @@ export class DiscordWebScraper {
 			plugins: {},
 		};
 
-		console.time(`Time taken to download all build files for ${buildHash}`);
-		const files = await this.bulkDownloadFiles(this.getFileLinksFromHtml(html));
-		console.timeEnd(`Time taken to download all build files for ${buildHash}`);
+		return new DiscordWebScraper(build, html);
+	}
+
+	async beginScrapingFiles(): Promise<Build> {
+		console.time(
+			`Time taken to download all build files for ${this.build.build_hash}`,
+		);
+		const files = await this.bulkDownloadFiles(
+			this.getFileLinksFromHtml(this.html),
+		);
+		console.timeEnd(
+			`Time taken to download all build files for ${this.build.build_hash}`,
+		);
 
 		for (const file of files) {
-			await handleFile(build, file);
+			await handleFile(this.build, file);
 
 			// Clear the blob from memory
 			file.blob = undefined;
 		}
 
-		build.files = files;
+		this.build.files = files;
 
-		await handleBuild(build);
+		await handleBuild(this.build);
 
-		fs.writeFileSync("./out.json", JSON.stringify(build, null, 2));
+		fs.writeFileSync("./out.json", JSON.stringify(this.build, null, 2));
 
-		console.timeEnd(`Time taken to fetch latest build root for ${branch}`);
-		console.log(build.files.length);
+		console.timeEnd(
+			`Time taken to fetch latest build root for ${this.build.release_channels}`,
+		);
+
+		return this.build;
 	}
 
 	private getFileLinksFromHtml(body: string): File[] {
