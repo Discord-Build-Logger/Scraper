@@ -1,0 +1,39 @@
+{
+  "name": "@dsale/scraper",
+  "version": "0.0.0.1",
+  "homepage": "https://github.com/Discord-Build-Logger/Scraper",
+  "author": {
+    "name": "Rie Takahashi",
+    "url": "https://github.com/MeguminSama",
+    "email": "megumin@megu.dev"
+  },
+  "funding": {
+    "type": "individual",
+    "url": "https://github.com/sponsors/MeguminSama"
+  },
+  "module": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "format": "biome format --write ./src",
+    "lint": "biome lint ./src",
+    "check": "biome check --apply ./src"
+  },
+  "dependencies": {
+    "estree-walker": "^3.0.3",
+    "oxc-parser": "^0.8.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.6.3",
+    "@types/bun": "latest",
+    "@types/deep-equal": "^1.0.4"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "files": [
+    "./*",
+    "!./node_modules/",
+    "!./out.json",
+    "!./blobs/"
+  ]
+}
