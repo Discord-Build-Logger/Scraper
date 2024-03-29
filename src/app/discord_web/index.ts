@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import { downloadFile } from "~/app/downloader";
 import {
 	HTML_GLOBAL_ENV_REGEX,
@@ -85,8 +84,6 @@ export class DiscordWebScraper {
 		this.build.files = files;
 
 		await handleBuild(this.build);
-
-		fs.writeFileSync("./out.json", JSON.stringify(this.build, null, 2));
 
 		return this.build;
 	}
