@@ -1,6 +1,6 @@
 {
   "name": "@dsale/scraper",
-  "version": "0.0.1-beta.9",
+  "version": "0.0.1-beta.10",
   "homepage": "https://github.com/Discord-Build-Logger/Scraper",
   "author": {
     "name": "Rie Takahashi",
@@ -11,8 +11,8 @@
     "type": "individual",
     "url": "https://github.com/sponsors/MeguminSama"
   },
-  "module": "src/index.ts",
   "types": "src/index.ts",
+  "main": "src/index.ts",
   "type": "module",
   "scripts": {
     "format": "biome format --write ./src",
@@ -30,11 +30,6 @@
   },
   "peerDependencies": {
     "typescript": "^5.0.0"
-  },
-  "exports": {
-    ".": "./src/index.ts",
-    "./types": "./src/types/index.ts",
-    "./types/discord": "./src/types/discord.ts"
   },
   "files": [
     "./*",
