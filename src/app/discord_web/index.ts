@@ -3,7 +3,7 @@ import { downloadFile } from "~/app/downloader";
 import {
 	HTML_GLOBAL_ENV_REGEX,
 	HTML_URL_REGEX,
-	JS_URL_REGEX,
+	JS_URL_REGEXES,
 } from "~/constants";
 import { handleBuild, handleFile } from "~/plugins";
 import type { Build, File } from "~/types";
@@ -37,7 +37,6 @@ export class DiscordWebScraper {
 		const html = await response.text();
 
 		let global_env: Record<string, any> = {};
-
 		try {
 			global_env = new Function(
 				`return${HTML_GLOBAL_ENV_REGEX.exec(html)?.[1]}`,
@@ -45,6 +44,8 @@ export class DiscordWebScraper {
 		} catch (e) {
 			console.error("Failed to parse global env:", e);
 		}
+
+		HTML_GLOBAL_ENV_REGEX.lastIndex = 0;
 
 		const build: Build = {
 			build_hash: buildHash,
@@ -87,15 +88,12 @@ export class DiscordWebScraper {
 
 		fs.writeFileSync("./out.json", JSON.stringify(this.build, null, 2));
 
-		console.timeEnd(
-			`Time taken to fetch latest build root for ${this.build.release_channels}`,
-		);
-
 		return this.build;
 	}
 
 	private getFileLinksFromHtml(body: string): File[] {
 		const matches = body.matchAll(HTML_URL_REGEX);
+		HTML_URL_REGEX.lastIndex = 0;
 
 		const links: File[] = [];
 
@@ -120,12 +118,46 @@ export class DiscordWebScraper {
 
 	static IGNORED_FILENAMES = ["NW.js", "Node.js", "bn.js", "hash.js"];
 	private getFileLinksFromJs(body: string): File[] {
-		const matches = body.matchAll(JS_URL_REGEX);
+		const captured: RegExpMatchArray[] = [];
+		// The latest links regex
+		let matches = body.matchAll(JS_URL_REGEXES.rspack_27_03_2024_g1);
+		JS_URL_REGEXES.rspack_27_03_2024_g1.lastIndex = 0;
+
+		// biome-ignore lint/suspicious/noConfusingLabels: The code becomes horrifying if I don't do this...
+		checkMatches: {
+			if (matches) {
+				const matches2 = body.matchAll(JS_URL_REGEXES.rspack_27_03_2024_g2);
+				JS_URL_REGEXES.rspack_27_03_2024_g2.lastIndex = 0;
+
+				if (!matches2) break checkMatches;
+
+				const inner = matches2
+					.next()
+					.value?.[1].matchAll(JS_URL_REGEXES.rspack_27_03_2024_g2_inner);
+				JS_URL_REGEXES.rspack_27_03_2024_g2_inner.lastIndex = 0;
+
+				if (!inner) break checkMatches;
+
+				captured.push(...(Array.from(matches2) as RegExpMatchArray[]));
+				captured.push(...(Array.from(inner) as RegExpMatchArray[]));
+			}
+		}
+
+		// If it fails, try an older regex
+		if (!matches) {
+			matches = body.matchAll(JS_URL_REGEXES.rspack);
+			JS_URL_REGEXES.rspack.lastIndex = 0;
+
+			captured.push(...(Array.from(matches) as RegExpMatchArray[]));
+		}
 
 		const links: File[] = [];
 
-		for (const asset of Array.from(matches)) {
-			const url = asset[1];
+		for (const asset of captured) {
+			const { id, hash } = asset.groups ?? {};
+			let url = `${id ?? ""}${hash}`;
+			if (!url.endsWith(".js")) url += ".js";
+
 			if (DiscordWebScraper.IGNORED_FILENAMES.includes(url)) {
 				continue;
 			}
