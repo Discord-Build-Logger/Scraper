@@ -138,7 +138,7 @@ export class DiscordWebScraper {
 
 				if (!inner) break checkMatches;
 
-				captured.push(...(Array.from(matches2) as RegExpMatchArray[]));
+				captured.push(...(Array.from(matches) as RegExpMatchArray[]));
 				captured.push(...(Array.from(inner) as RegExpMatchArray[]));
 			}
 		}
