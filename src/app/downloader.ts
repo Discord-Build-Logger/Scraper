@@ -5,6 +5,9 @@ export async function downloadFile(file: File): Promise<File> {
 	const response = await fetch(url);
 
 	if (!response.ok) {
+		// consume the body to prevent memory leaks
+		await response.text().catch(() => {});
+
 		throw new Error(`Failed to download file from ${url}`);
 	}
 

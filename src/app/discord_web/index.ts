@@ -23,6 +23,8 @@ export class DiscordWebScraper {
 		const response = await fetch(url);
 
 		if (!response.ok) {
+			// consume the body to prevent memory leaks
+			await response.text().catch(() => {});
 			throw new Error(`Failed to fetch Discord build from ${url}`);
 		}
 
@@ -30,6 +32,8 @@ export class DiscordWebScraper {
 		const lastModified = response.headers.get("last-modified");
 
 		if (!buildHash || !lastModified) {
+			// consume the body to prevent memory leaks
+			await response.text().catch(() => {});
 			throw new Error(`Failed to fetch Discord build metadata from ${url}`);
 		}
 
