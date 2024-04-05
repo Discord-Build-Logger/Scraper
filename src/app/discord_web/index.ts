@@ -7,12 +7,20 @@ import {
 import { handleBuild, handleFile } from "~/plugins";
 import type { Build, File } from "~/types";
 import Discord from "../../types/discord";
+import * as walker from "estree-walker";
+import { parseSync } from "oxc-parser"
+
+
+export type CapturedModule = {
+	id: number,
+	hash: string,
+}
 
 export class DiscordWebScraper {
 	constructor(
 		public build: Build,
 		public html: string,
-	) {}
+	) { }
 
 	static async scrapeLatestBuild(
 		branch: Discord.ReleaseChannel,
@@ -24,7 +32,7 @@ export class DiscordWebScraper {
 
 		if (!response.ok) {
 			// consume the body to prevent memory leaks
-			await response.text().catch(() => {});
+			await response.text().catch(() => { });
 			throw new Error(`Failed to fetch Discord build from ${url}`);
 		}
 
@@ -33,7 +41,7 @@ export class DiscordWebScraper {
 
 		if (!buildHash || !lastModified) {
 			// consume the body to prevent memory leaks
-			await response.text().catch(() => {});
+			await response.text().catch(() => { });
 			throw new Error(`Failed to fetch Discord build metadata from ${url}`);
 		}
 
@@ -117,45 +125,89 @@ export class DiscordWebScraper {
 		return links;
 	}
 
-	static IGNORED_FILENAMES = ["NW.js", "Node.js", "bn.js", "hash.js"];
+	private static readonly IGNORED_FILENAMES = ["NW.js", "Node.js", "bn.js", "hash.js", "utf8str", "t61str", "ia5str", "iso646str"];
 	private getFileLinksFromJs(body: string): File[] {
-		const captured: RegExpMatchArray[] = [];
-		// The latest links regex
-		let matches = body.matchAll(JS_URL_REGEXES.rspack_27_03_2024_g1);
-		JS_URL_REGEXES.rspack_27_03_2024_g1.lastIndex = 0;
-
-		// biome-ignore lint/suspicious/noConfusingLabels: The code becomes horrifying if I don't do this...
-		checkMatches: {
-			if (matches) {
-				const matches2 = body.matchAll(JS_URL_REGEXES.rspack_27_03_2024_g2);
-				JS_URL_REGEXES.rspack_27_03_2024_g2.lastIndex = 0;
-
-				if (!matches2) break checkMatches;
-
-				const inner = matches2
-					.next()
-					.value?.[1].matchAll(JS_URL_REGEXES.rspack_27_03_2024_g2_inner);
-				JS_URL_REGEXES.rspack_27_03_2024_g2_inner.lastIndex = 0;
-
-				if (!inner) break checkMatches;
-
-				captured.push(...(Array.from(matches) as RegExpMatchArray[]));
-				captured.push(...(Array.from(inner) as RegExpMatchArray[]));
-			}
-		}
-
-		// If it fails, try an older regex
-		if (!matches) {
-			matches = body.matchAll(JS_URL_REGEXES.rspack);
-			JS_URL_REGEXES.rspack.lastIndex = 0;
-
-			captured.push(...(Array.from(matches) as RegExpMatchArray[]));
-		}
-
 		const links: File[] = [];
+		const captured: CapturedModule[] = [];
+		const ast = parseSync(body);
+
+		walker.walk(JSON.parse(ast.program), {
+			enter: (node: any, parent: any) => {
+				if (parent === null) { return; }
+				let isChunk = false
+				let chunkID: number | undefined = undefined;
+				let chunkHash: string | undefined = undefined;
+
+				if (node.type === "ConditionalExpression") {
+					const test = node.test
+					const consequent = node.consequent
+
+					if (test === undefined) { return; }
+					if (consequent === undefined) { return; }
+					if (test.type !== "BinaryExpression" || consequent.type !== "BinaryExpression") { return; }
+					const testLeft = test.left
+					const consequentRight = consequent.right
+					if (consequentRight.type !== "StringLiteral") { return; }
+
+					const _chunkID: string = testLeft.value
+					const _chunkHash: string = consequentRight.value
+
+					const isChunkHash = _chunkHash.endsWith(".js") === true
+
+					if (isChunkHash === true) {
+						chunkID = Number.parseInt(_chunkID)
+						chunkHash = _chunkHash
+						isChunk = true
+					} else {
+						console.log(_chunkID, _chunkHash)
+					}
+				}
+
+				if (parent.type === "ObjectExpression") {
+					const key = node.key
+					const value = node.value
+
+					if (key === undefined) { return; }
+					if (value === undefined) { return; }
+
+					const _chunkID = key.value
+					const isChunkIDNum = Number.isInteger(_chunkID) === true
+					const _chunkHash: string = value.value
+
+					if (typeof (_chunkHash) !== "string") {
+						return;
+					}
+
+					const isHash = DiscordWebScraper.IGNORED_FILENAMES.includes(_chunkHash) !== true
+						&& _chunkHash.startsWith("F") !== true
+						&& _chunkHash.endsWith(".js") !== true
+						&& JS_URL_REGEXES.regex_url_hash.test(_chunkHash)
+
+					const isChunkFile = _chunkHash !== undefined
+						&& isChunkIDNum === true
+						&& isHash === true
+
+					if (isChunkFile === true) {
+						chunkID = Number.parseInt(_chunkID)
+						chunkHash = _chunkHash
+						isChunk = true
+					}
+
+				}
+
+				if (isChunk === true && chunkID !== undefined && chunkHash !== undefined) {
+					console.log(`ChunkID: ${chunkID}, Hash: ${chunkHash}`)
+					captured.push({
+						id: chunkID,
+						hash: chunkHash
+					})
+				}
+			},
+		})
 
 		for (const asset of captured) {
-			const { id, hash } = asset.groups ?? {};
+			const { id, hash } = asset ?? {};
+
 			let url = `${id ?? ""}${hash}`;
 			if (!url.endsWith(".js")) url += ".js";
 
@@ -183,10 +235,10 @@ export class DiscordWebScraper {
 			recursive: boolean;
 			ignoreFiles: string[];
 		} = {
-			branch: Discord.ReleaseChannel.canary,
-			recursive: true,
-			ignoreFiles: [],
-		},
+				branch: Discord.ReleaseChannel.canary,
+				recursive: true,
+				ignoreFiles: [],
+			},
 	): Promise<File[]> {
 		let downloaded: File[] = [];
 		const filesToDownload = files.filter(
