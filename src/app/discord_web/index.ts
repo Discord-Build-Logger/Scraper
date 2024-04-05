@@ -156,7 +156,7 @@ export class DiscordWebScraper {
 
 					if (isChunkHash === true) {
 						chunkID = Number.parseInt(_chunkID)
-						chunkHash = _chunkHash
+						chunkHash = `${chunkID}${chunkHash}`
 						isChunk = true
 					} else {
 						console.log(_chunkID, _chunkHash)
