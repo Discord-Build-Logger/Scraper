@@ -16,6 +16,11 @@ export type CapturedModule = {
 	hash: string,
 }
 
+export enum CaptureMethod {
+	AST,
+	Regex
+}
+
 export class DiscordWebScraper {
 	constructor(
 		public build: Build,
@@ -126,8 +131,15 @@ export class DiscordWebScraper {
 	}
 
 	private static readonly IGNORED_FILENAMES = ["NW.js", "Node.js", "bn.js", "hash.js", "utf8str", "t61str", "ia5str", "iso646str"];
-	private getFileLinksFromJs(body: string): File[] {
-		const links: File[] = [];
+	private static readonly REQUIRED_STRINGS = [".js"];
+
+	private isChunkLoader(body: string): boolean {
+		return DiscordWebScraper.REQUIRED_STRINGS.every((field) => {
+			return body.match(new RegExp(field, "g"));
+		})
+	}
+
+	private captureModulesAST(body: string): CapturedModule[] {
 		const captured: CapturedModule[] = [];
 		const ast = parseSync(body);
 
@@ -156,10 +168,35 @@ export class DiscordWebScraper {
 
 					if (isChunkHash === true) {
 						chunkID = Number.parseInt(_chunkID)
-						chunkHash = `${chunkID}${chunkHash}`
+						chunkHash = `${_chunkID}${_chunkHash}`
 						isChunk = true
 					} else {
-						console.log(_chunkID, _chunkHash)
+					}
+				}
+
+				if (node.type === "ObjectProperty") {
+					const key = node?.key
+					const value = node?.value
+
+					const _chunkID = key?.value
+					const isChunkIDNum = Number.isInteger(_chunkID) === true
+					const _chunkHash = value?.value
+
+					// why would we parse numbers..
+					if (typeof _chunkHash !== "string") {
+						return;
+					}
+
+					if (isChunkIDNum !== true) {
+						return;
+					}
+
+					if (_chunkHash !== undefined) {
+						if (_chunkHash.endsWith(".js")) {
+							chunkID = Number.parseInt(_chunkID)
+							chunkHash = `${_chunkHash}`
+							isChunk = true
+						}
 					}
 				}
 
@@ -192,18 +229,78 @@ export class DiscordWebScraper {
 						chunkHash = _chunkHash
 						isChunk = true
 					}
-
 				}
 
 				if (isChunk === true && chunkID !== undefined && chunkHash !== undefined) {
-					console.log(`ChunkID: ${chunkID}, Hash: ${chunkHash}`)
 					captured.push({
 						id: chunkID,
-						hash: chunkHash
+						hash: chunkHash,
 					})
 				}
 			},
 		})
+
+		return captured;
+	}
+
+	private captureModulesRegex(body: string): CapturedModule[] {
+		const captured: RegExpMatchArray[] = [];
+		// The latest links regex
+		let matches = body.matchAll(JS_URL_REGEXES.rspack_27_03_2024_g1);
+		JS_URL_REGEXES.rspack_27_03_2024_g1.lastIndex = 0;
+
+		// biome-ignore lint/suspicious/noConfusingLabels: The code becomes horrifying if I don't do this...
+		checkMatches: {
+			if (matches) {
+				const matches2 = body.matchAll(JS_URL_REGEXES.rspack_27_03_2024_g2);
+				JS_URL_REGEXES.rspack_27_03_2024_g2.lastIndex = 0;
+
+				if (!matches2) break checkMatches;
+
+				const inner = matches2
+					.next()
+					.value?.[1].matchAll(JS_URL_REGEXES.rspack_27_03_2024_g2_inner);
+				JS_URL_REGEXES.rspack_27_03_2024_g2_inner.lastIndex = 0;
+
+				if (!inner) break checkMatches;
+
+				captured.push(...(Array.from(matches) as RegExpMatchArray[]));
+				captured.push(...(Array.from(inner) as RegExpMatchArray[]));
+			}
+		}
+
+		// If it fails, try an older regex
+		if (!matches) {
+			matches = body.matchAll(JS_URL_REGEXES.rspack);
+			JS_URL_REGEXES.rspack.lastIndex = 0;
+
+			captured.push(...(Array.from(matches) as RegExpMatchArray[]));
+		}
+
+		return captured.map((captured) => {
+			const { id, hash } = captured.groups ?? {}
+			const module: CapturedModule = {
+				id: parseInt(id),
+				hash: hash,
+			}
+
+			return module
+		});
+	}
+
+	private getFileLinksFromJs(body: string, captureMethod: CaptureMethod): File[] {
+		if (!this.isChunkLoader(body)) {
+			return []
+		}
+
+		const links: File[] = []
+		let captured;
+
+		if (captureMethod == CaptureMethod.AST) {
+			captured = this.captureModulesAST(body);
+		} else {
+			captured = this.captureModulesRegex(body);
+		}
 
 		for (const asset of captured) {
 			const { id, hash } = asset ?? {};
@@ -234,10 +331,12 @@ export class DiscordWebScraper {
 			branch: Discord.ReleaseChannel;
 			recursive: boolean;
 			ignoreFiles: string[];
+			captureMethod?: CaptureMethod
 		} = {
 				branch: Discord.ReleaseChannel.canary,
 				recursive: true,
 				ignoreFiles: [],
+				captureMethod: CaptureMethod.AST
 			},
 	): Promise<File[]> {
 		let downloaded: File[] = [];
@@ -260,11 +359,11 @@ export class DiscordWebScraper {
 
 		if (!opts.recursive) return downloaded;
 
-		for (const result of downloaded) {
+		Promise.allSettled(downloaded.map(async (result) => {
 			const body = await result.blob?.text();
-			if (!body) continue;
+			if (!body) return;
 
-			const links = this.getFileLinksFromJs(body);
+			const links = this.getFileLinksFromJs(body, opts.captureMethod ?? CaptureMethod.AST);
 
 			// Filter out files we've already downloaded
 			const filteredLinks = links.filter(
@@ -277,11 +376,12 @@ export class DiscordWebScraper {
 			).catch(console.error);
 
 			if (!nestedDownloads) {
-				continue;
+				return;
 			}
 
+			console.log(downloaded.length, nestedDownloads.length)
 			downloaded = [...downloaded, ...nestedDownloads];
-		}
+		}))
 
 		return downloaded;
 	}
