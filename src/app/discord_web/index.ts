@@ -7,12 +7,25 @@ import {
 import { handleBuild, handleFile } from "~/plugins";
 import type { Build, File } from "~/types";
 import Discord from "../../types/discord";
+import * as walker from "estree-walker";
+import { parseSync } from "oxc-parser"
+
+
+export type CapturedModule = {
+	id: number,
+	hash: string,
+}
+
+export enum CaptureMethod {
+	AST,
+	Regex
+}
 
 export class DiscordWebScraper {
 	constructor(
 		public build: Build,
 		public html: string,
-	) {}
+	) { }
 
 	static async scrapeLatestBuild(
 		branch: Discord.ReleaseChannel,
@@ -24,7 +37,7 @@ export class DiscordWebScraper {
 
 		if (!response.ok) {
 			// consume the body to prevent memory leaks
-			await response.text().catch(() => {});
+			await response.text().catch(() => { });
 			throw new Error(`Failed to fetch Discord build from ${url}`);
 		}
 
@@ -33,7 +46,7 @@ export class DiscordWebScraper {
 
 		if (!buildHash || !lastModified) {
 			// consume the body to prevent memory leaks
-			await response.text().catch(() => {});
+			await response.text().catch(() => { });
 			throw new Error(`Failed to fetch Discord build metadata from ${url}`);
 		}
 
@@ -117,8 +130,120 @@ export class DiscordWebScraper {
 		return links;
 	}
 
-	static IGNORED_FILENAMES = ["NW.js", "Node.js", "bn.js", "hash.js"];
-	private getFileLinksFromJs(body: string): File[] {
+	private static readonly IGNORED_FILENAMES = ["NW.js", "Node.js", "bn.js", "hash.js", "utf8str", "t61str", "ia5str", "iso646str"];
+	private static readonly REQUIRED_STRINGS = [".js"];
+
+	private isChunkLoader(body: string): boolean {
+		return DiscordWebScraper.REQUIRED_STRINGS.every((field) => {
+			return body.match(new RegExp(field, "g"));
+		})
+	}
+
+	private captureModulesAST(body: string): CapturedModule[] {
+		const captured: CapturedModule[] = [];
+		const ast = parseSync(body);
+
+		walker.walk(JSON.parse(ast.program), {
+			enter: (node: any, parent: any) => {
+				if (parent === null) { return; }
+				let isChunk = false
+				let chunkID: number | undefined = undefined;
+				let chunkHash: string | undefined = undefined;
+
+				if (node.type === "ConditionalExpression") {
+					const test = node.test
+					const consequent = node.consequent
+
+					if (test === undefined) { return; }
+					if (consequent === undefined) { return; }
+					if (test.type !== "BinaryExpression" || consequent.type !== "BinaryExpression") { return; }
+					const testLeft = test.left
+					const consequentRight = consequent.right
+					if (consequentRight.type !== "StringLiteral") { return; }
+
+					const _chunkID: string = testLeft.value
+					const _chunkHash: string = consequentRight.value
+
+					const isChunkHash = _chunkHash.endsWith(".js") === true
+
+					if (isChunkHash === true) {
+						chunkID = Number.parseInt(_chunkID)
+						chunkHash = `${_chunkID}${_chunkHash}`
+						isChunk = true
+					} else {
+					}
+				}
+
+				if (node.type === "ObjectProperty") {
+					const key = node?.key
+					const value = node?.value
+
+					const _chunkID = key?.value
+					const isChunkIDNum = Number.isInteger(_chunkID) === true
+					const _chunkHash = value?.value
+
+					// why would we parse numbers..
+					if (typeof _chunkHash !== "string") {
+						return;
+					}
+
+					if (isChunkIDNum !== true) {
+						return;
+					}
+
+					if (_chunkHash !== undefined) {
+						if (_chunkHash.endsWith(".js")) {
+							chunkID = Number.parseInt(_chunkID)
+							chunkHash = `${_chunkHash}`
+							isChunk = true
+						}
+					}
+				}
+
+				if (parent.type === "ObjectExpression") {
+					const key = node.key
+					const value = node.value
+
+					if (key === undefined) { return; }
+					if (value === undefined) { return; }
+
+					const _chunkID = key.value
+					const isChunkIDNum = Number.isInteger(_chunkID) === true
+					const _chunkHash: string = value.value
+
+					if (typeof (_chunkHash) !== "string") {
+						return;
+					}
+
+					const isHash = DiscordWebScraper.IGNORED_FILENAMES.includes(_chunkHash) !== true
+						&& _chunkHash.startsWith("F") !== true
+						&& _chunkHash.endsWith(".js") !== true
+						&& JS_URL_REGEXES.regex_url_hash.test(_chunkHash)
+
+					const isChunkFile = _chunkHash !== undefined
+						&& isChunkIDNum === true
+						&& isHash === true
+
+					if (isChunkFile === true) {
+						chunkID = Number.parseInt(_chunkID)
+						chunkHash = _chunkHash
+						isChunk = true
+					}
+				}
+
+				if (isChunk === true && chunkID !== undefined && chunkHash !== undefined) {
+					captured.push({
+						id: chunkID,
+						hash: chunkHash,
+					})
+				}
+			},
+		})
+
+		return captured;
+	}
+
+	private captureModulesRegex(body: string): CapturedModule[] {
 		const captured: RegExpMatchArray[] = [];
 		// The latest links regex
 		let matches = body.matchAll(JS_URL_REGEXES.rspack_27_03_2024_g1);
@@ -152,10 +277,34 @@ export class DiscordWebScraper {
 			captured.push(...(Array.from(matches) as RegExpMatchArray[]));
 		}
 
-		const links: File[] = [];
+		return captured.map((captured) => {
+			const { id, hash } = captured.groups ?? {}
+			const module: CapturedModule = {
+				id: parseInt(id),
+				hash: hash,
+			}
+
+			return module
+		});
+	}
+
+	private getFileLinksFromJs(body: string, captureMethod: CaptureMethod): File[] {
+		if (!this.isChunkLoader(body)) {
+			return []
+		}
+
+		const links: File[] = []
+		let captured;
+
+		if (captureMethod == CaptureMethod.AST) {
+			captured = this.captureModulesAST(body);
+		} else {
+			captured = this.captureModulesRegex(body);
+		}
 
 		for (const asset of captured) {
-			const { id, hash } = asset.groups ?? {};
+			const { id, hash } = asset ?? {};
+
 			let url = `${id ?? ""}${hash}`;
 			if (!url.endsWith(".js")) url += ".js";
 
@@ -182,11 +331,13 @@ export class DiscordWebScraper {
 			branch: Discord.ReleaseChannel;
 			recursive: boolean;
 			ignoreFiles: string[];
+			captureMethod?: CaptureMethod
 		} = {
-			branch: Discord.ReleaseChannel.canary,
-			recursive: true,
-			ignoreFiles: [],
-		},
+				branch: Discord.ReleaseChannel.canary,
+				recursive: true,
+				ignoreFiles: [],
+				captureMethod: CaptureMethod.AST
+			},
 	): Promise<File[]> {
 		let downloaded: File[] = [];
 		const filesToDownload = files.filter(
@@ -208,11 +359,11 @@ export class DiscordWebScraper {
 
 		if (!opts.recursive) return downloaded;
 
-		for (const result of downloaded) {
+		Promise.allSettled(downloaded.map(async (result) => {
 			const body = await result.blob?.text();
-			if (!body) continue;
+			if (!body) return;
 
-			const links = this.getFileLinksFromJs(body);
+			const links = this.getFileLinksFromJs(body, opts.captureMethod ?? CaptureMethod.AST);
 
 			// Filter out files we've already downloaded
 			const filteredLinks = links.filter(
@@ -225,11 +376,12 @@ export class DiscordWebScraper {
 			).catch(console.error);
 
 			if (!nestedDownloads) {
-				continue;
+				return;
 			}
 
+			console.log(downloaded.length, nestedDownloads.length)
 			downloaded = [...downloaded, ...nestedDownloads];
-		}
+		}))
 
 		return downloaded;
 	}

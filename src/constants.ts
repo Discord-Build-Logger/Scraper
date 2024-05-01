@@ -13,9 +13,13 @@ const JS_URL_REGEX__27_03_2024_RSPACK_group2 =
 
 const JS_URL_REGEX__27_03_2024_RSPACK_group2_inner = /[\de]+:"(?<hash>\w+)",?/g;
 
+// :fear:
+const JS_URL_REGEX__HASH = /^(?=.*?\d)(?=.*?[a-zA-Z])[a-zA-Z\d]+$/;
+
 export const JS_URL_REGEXES = {
 	rspack: JS_URL_REGEX__RSPACK,
 	rspack_27_03_2024_g1: JS_URL_REGEX__27_03_2024_RSPACK_group1,
 	rspack_27_03_2024_g2: JS_URL_REGEX__27_03_2024_RSPACK_group2,
 	rspack_27_03_2024_g2_inner: JS_URL_REGEX__27_03_2024_RSPACK_group2_inner,
+	regex_url_hash: JS_URL_REGEX__HASH,
 };
