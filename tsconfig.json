@@ -9,10 +9,8 @@
     "allowJs": true,
 
     "rootDir": "./",
+    "outDir": "./dist",
 
-    "paths": {
-      "~/*": ["./src/*"]
-    },
     "esModuleInterop": true,
 
     // Bundler mode

@@ -3,6 +3,6 @@
 To install:
 
 ```bash
-bun add @dsale/scraper
+pnpm install @dsale/scraper
 ```
 

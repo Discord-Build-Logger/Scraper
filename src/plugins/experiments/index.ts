@@ -1,4 +1,4 @@
-import type { Build, File, Plugin } from "~/types";
+import type { Build, File, Plugin } from "../../types";
 import { ASTParser } from "./ast";
 
 export class ExperimentsPlugin implements Plugin {

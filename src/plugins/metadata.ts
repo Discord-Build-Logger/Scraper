@@ -1,4 +1,4 @@
-import type { Build, File, Plugin } from "~/types";
+import type { Build, File, Plugin } from "../types";
 
 export class MetadataPlugin implements Plugin {
 	private static BUILT_AT_REGEX = /built_at:"(\d+?)"/;

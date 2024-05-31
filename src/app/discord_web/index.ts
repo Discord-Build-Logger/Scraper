@@ -1,11 +1,11 @@
-import { downloadFile } from "~/app/downloader";
+import { downloadFile } from "../../app/downloader";
 import {
 	HTML_GLOBAL_ENV_REGEX,
 	HTML_URL_REGEX,
 	JS_URL_REGEXES,
-} from "~/constants";
-import { handleBuild, handleFile } from "~/plugins";
-import type { Build, File } from "~/types";
+} from "../../constants";
+import { handleBuild, handleFile } from "../../plugins";
+import type { Build, File } from "../../types";
 import Discord from "../../types/discord";
 
 export class DiscordWebScraper {

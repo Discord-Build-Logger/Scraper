@@ -1,7 +1,7 @@
 import assert from "node:assert";
 import * as walker from "estree-walker";
 import * as oxc from "oxc-parser";
-import { Experiment } from "~/types/discord";
+import { Experiment } from "../../types/discord";
 
 export interface ASTExperiment {
 	kind: Experiment.Type;

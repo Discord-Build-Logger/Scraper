@@ -1,4 +1,4 @@
-import type { ASTExperiment } from "~/plugins/experiments/ast";
+import type { ASTExperiment } from "../plugins/experiments/ast";
 import type Discord from "./discord";
 
 export interface Plugin {

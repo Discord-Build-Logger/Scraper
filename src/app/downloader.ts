@@ -1,4 +1,4 @@
-import type { File } from "~/types";
+import type { File } from "../types";
 
 export async function downloadFile(file: File): Promise<File> {
 	const url = new URL(file.path, "https://discord.com").href;

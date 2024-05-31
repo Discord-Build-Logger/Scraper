@@ -1,4 +1,4 @@
-import Discord from "~/types/discord";
+import Discord from "../types/discord";
 
 import DiscordWebScraper from "./discord_web";
 
@@ -8,7 +8,7 @@ export function scrape(
 ) {
 	switch (project) {
 		case Discord.Project.discord_web: {
-			return new DiscordWebScraper().scrapeLatestBuild(releaseChannel);
+			return DiscordWebScraper.scrapeLatestBuild(releaseChannel);
 		}
 		default: {
 			throw new Error(`Project ${project} is not supported yet.`);
