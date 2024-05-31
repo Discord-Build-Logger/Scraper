@@ -64,6 +64,8 @@ export class DiscordWebScraper {
 			plugins: {},
 		};
 
+		console.timeEnd(`Time taken to fetch latest build root for ${branch}`);
+
 		return new DiscordWebScraper(build, html);
 	}
 

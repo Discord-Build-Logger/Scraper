@@ -317,6 +317,7 @@ class DiscordWebScraper {
       files: [],
       plugins: {}
     };
+    console.timeEnd(`Time taken to fetch latest build root for ${branch}`);
     return new DiscordWebScraper(build, html);
   }
   async beginScrapingFiles() {
